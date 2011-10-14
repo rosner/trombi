@@ -319,15 +319,16 @@ class Server(TrombiObject):
                         self._fetch_args['headers'] = HTTPHeaders()
                     h = self._fetch_args['headers']
                     h['Cookie'] = cookie
-                    h['X-CouchDB-WWW-Authenticate'] = "Cookie"
+                    h['X-Couchdb-Www-Authenticate'] = "Cookie"
 
             if response.request.method == "DELETE":
                     # remove the cookie if present
-                h = self._fetch_args['headers']
-                if 'Cookie' in h:
-                    del h['Cookie']
-                if 'X-CouchDB-WWW-Authenticate' in h:
-                    del h['X-CouchDB-WWW-Authenticate']
+                if 'headers' in self._fetch_args:
+                    h = self._fetch_args['headers']
+                    if 'Cookie' in h:
+                        del h['Cookie']
+                    if 'X-Couchdb-Www-Authenticate' in h:
+                        del h['X-Couchdb-Www-Authenticate']
 
             body = json.loads(response.body.decode('utf-8'))
             callback(cookie, body)

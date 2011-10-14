@@ -102,6 +102,8 @@ def test_session_with_user(baseurl, ioloop):
     # check for the cookie and user info
     eq(result['cookie'].startswith("AuthSession="), True)
     eq(result['session_info'], {u'ok': True, u'name': u'test', u'roles': []})
+    eq(s._fetch_args['headers'], {'Cookie': result['cookie'],
+            'X-Couchdb-Www-Authenticate': "Cookie"})
 
     # get the session info
     s.session(session_callback)
@@ -120,3 +122,6 @@ def test_session_with_user(baseurl, ioloop):
 
     eq(result['cookie'], "AuthSession=")
     eq(result['session_info'], {u'ok': True})
+    eq('headers' in s._fetch_args, True)
+    eq('Cookie' in s._fetch_args['headers'], False)
+    eq('X-Couchdb-Www-Authenticate' in s._fetch_args['headers'], False)
