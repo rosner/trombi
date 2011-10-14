@@ -304,6 +304,53 @@ class Server(TrombiObject):
         userdb = Database(self, '_users')
         userdb.delete(user_doc, callback)
 
+    def session(self, callback, username=None, password=None,
+        logout=False, store_cookie=True):
+
+        def _really_callback(response):
+            cookie = None
+            if 'Set-Cookie' in response.headers:
+                cookie = response.headers['Set-Cookie'].split(';')[0]
+
+            if response.code in [200, 302] and store_cookie:
+                # store the cookie for subsequent requests with trombi
+                if cookie:
+                    if 'headers' not in self._fetch_args:
+                        self._fetch_args['headers'] = HTTPHeaders()
+                    h = self._fetch_args['headers']
+                    h['Cookie'] = cookie
+                    h['X-CouchDB-WWW-Authenticate'] = "Cookie"
+
+            if response.request.method == "DELETE":
+                    # remove the cookie if present
+                h = self._fetch_args['headers']
+                if 'Cookie' in h:
+                    del h['Cookie']
+                if 'X-CouchDB-WWW-Authenticate' in h:
+                    del h['X-CouchDB-WWW-Authenticate']
+
+            body = json.loads(response.body.decode('utf-8'))
+            callback(cookie, body)
+
+        body = None
+        method = "GET"
+        if username and password:
+            method="POST"
+            body = "name=%s&password=%s" % (username, password)
+        if logout:
+            method="DELETE"
+
+        url = '%s/%s' % (self.baseurl, '_session') 
+
+        fetch_args = {}
+        fetch_args.update(self._fetch_args)
+        self._client.fetch(
+            url,
+            _really_callback,
+            method=method,
+            body=body
+            )
+
 
 class Database(TrombiObject):
     def __init__(self, server, name):
