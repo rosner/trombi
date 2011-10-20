@@ -79,29 +79,18 @@ def test_session_with_user(baseurl, ioloop):
         assert not response.error
         ioloop.stop()
 
-    def add_user_cb(db):
-        assert not db.error
-        result['db'] = db
-        ioloop.stop()
-
-    # get the users db
-    s.get('_users', add_user_cb)
-    ioloop.start()
-
     # add a user
-    salt = '123456'
-    user = {'name': 'test', 'salt': salt, 'type': 'user', 'roles': []}
-    user['password_sha'] = hashlib.sha1('test' + salt).hexdigest()
-    result['db'].set('org.couchdb.user:test', user, add_user_callback)
+    s.add_user('testuser', 'testpassword', add_user_callback)
     ioloop.start()
 
     # login
-    s.session(session_callback, username="test", password="test")
+    s.session(session_callback, username="testuser", password="testpassword")
     ioloop.start()
 
     # check for the cookie and user info
     eq(result['cookie'].startswith("AuthSession="), True)
-    eq(result['session_info'], {u'ok': True, u'name': u'test', u'roles': []})
+    eq(result['session_info'], {u'ok': True, u'name': u'testuser',
+        u'roles': []})
     eq(s._fetch_args['headers'], {'Cookie': result['cookie'],
             'X-Couchdb-Www-Authenticate': "Cookie"})
 
