@@ -262,6 +262,34 @@ argument.
       Delete a user from the CouchDB database. On success, *callback*
       will be called with :class:`Database` as an argument.
 
+   .. method:: session(callback=None, username=None, password=None,
+         logout=False, store_cookie=True)
+
+      This is a wrapper method around the CouchDB session API. Basically we
+      allow one to login and logout via this method::
+
+         server.session(callback=X, username='test', password='test')
+
+      would perform a login of user 'test' with password 'test'. With::
+
+         server.session(callback=X, logout=True)
+
+      the CouchDB session would be deleted. When *store_cookie* is `True` we
+      store the CouchDB session cookie with this :class:`Server` instance, i.e.
+      subsequent calls to CouchDB using the same instance will be done with the
+      appropriate CouchDB user and her rights. When set to `False` you will
+      have to take care of the session cookie for yourself.
+
+      The callback will be called with two parameters::
+
+         callback(cookie, sessioninfo)
+
+      where the *cookie* is the very same cookie that would be used with the
+      :class:`Server` instance and *sessioninfo* is the session information
+      returned by CouchDB (including the user document). For more details, see
+      the `CouchDB wiki`__.
+
+      __ http://wiki.apache.org/couchdb/Session_API
 
 Database
 ========
