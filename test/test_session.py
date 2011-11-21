@@ -51,13 +51,9 @@ def test_session_api_with_wrong_credentials(baseurl, ioloop):
     s = trombi.Server(baseurl, io_loop=ioloop)
     response = []
 
-    def user_db_callback(db):
-        eq(db.error, False)
-        ioloop.stop()
-
     def session_callback(cookie, inner_response):
         response.append(inner_response)
-        s.get('_users', user_db_callback)
+        ioloop.stop()
 
     s.session(session_callback, username="daniel", password="daniel")
     ioloop.start()
