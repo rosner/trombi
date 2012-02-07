@@ -185,7 +185,7 @@ class Server(TrombiObject):
             if 'Cookie' in fetch_args:
                 fetch_args['Cookie'] += '; %s' % self.session_cookie
             else:
-                fetch_args['Cookie'] = self.sesison_cookie
+                fetch_args['Cookie'] = self.session_cookie
 
         self._client.fetch(*args, **fetch_args)
 
