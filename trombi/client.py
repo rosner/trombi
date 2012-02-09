@@ -680,6 +680,7 @@ class Database(TrombiObject):
         params = dict()
         if feed == 'continuous':
             params['streaming_callback'] = _stream
+            params['request_timeout'] = 0
 
         log.debug('Fetching changes from %s with params %s', url, params)
         self._fetch(url, _really_callback, **params)
