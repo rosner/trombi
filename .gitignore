@@ -3,3 +3,9 @@ tmp
 /MANIFEST
 /build
 /dist
+bin/
+.ropeproject
+.installed.cfg
+parts/
+eggs/
+*.egg*

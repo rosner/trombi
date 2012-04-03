@@ -1,5 +1,6 @@
-from distutils.core import setup
+from setuptools import setup
 
+tests_requirements = ['pyvows>=1.0.0', 'tornado_pyvows>=0.4.0']
 
 setup(
     name='trombi',
@@ -12,6 +13,11 @@ setup(
     maintainer_email='jyrki@dywypi.org',
     url='http://github.com/inoi/trombi/',
     packages=['trombi'],
+    install_requires = [
+        'tornado>=2.2',
+        ],
+    tests_require = tests_requirements,
+    extras_require = {'test': tests_requirements},
     classifiers=[
         'Development Status :: 4 - Beta',
         'Environment :: Web Environment',
