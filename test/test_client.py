@@ -756,6 +756,148 @@ def test_save_attachment_inline_custom_content_type(baseurl, ioloop):
     s.create('testdb', callback=create_db_callback)
     ioloop.start()
 
+@with_ioloop
+@with_couchdb
+def test_bulk_insert(baseurl, ioloop):
+    def do_test(db):
+        datas = [
+            {'key1': 'data1'},
+            {'key2': 'data2'},
+            ]
+        db.bulk_docs(datas, bulks_cb)
+
+    def bulks_cb(response):
+        assert not response.error
+        eq(len(response), 2)
+        assert all(isinstance(x, trombi.BulkObject) for x in response)
+        ioloop.stop()
+
+    s = trombi.Server(baseurl, io_loop=ioloop)
+    s.create('testdb', callback=do_test)
+    ioloop.start()
+
+
+@with_ioloop
+@with_couchdb
+def test_bulk_delete(baseurl, ioloop):
+    def do_test(db):
+        def bulks_cb(response):
+            datas = []
+            for doc in response:
+                datas.append(dict(doc))
+                datas[-1]['_deleted'] = True
+            db.bulk_docs(datas, bulks_delete_cb)
+
+        def bulks_delete_cb(response):
+            eq(response.error, False)
+            eq(len(response), 2)
+            assert all(isinstance(x, trombi.BulkObject) for x in response)
+            ioloop.stop()
+
+        datas = [
+            {'key1': 'data1'},
+            {'key2': 'data2'},
+            ]
+        db.bulk_docs(datas, bulks_cb)
+
+    s = trombi.Server(baseurl, io_loop=ioloop)
+    s.create('testdb', callback=do_test)
+    ioloop.start()
+
+
+@with_ioloop
+@with_couchdb
+def test_bulk_mixed(baseurl, ioloop):
+    def do_test(db):
+        def bulks_cb(response):
+            datas = [dict(response[0])]
+            datas[0]['_deleted'] = True
+            db.bulk_docs(datas, bulks_delete_cb)
+
+        def bulks_delete_cb(response):
+            eq(response.error, False)
+            eq(len(response), 1)
+            assert all(isinstance(x, trombi.BulkObject) for x in response)
+            ioloop.stop()
+
+        datas = [
+            {'key1': 'data1'},
+            {'key2': 'data2'},
+            ]
+        db.bulk_docs(datas, bulks_cb)
+
+    s = trombi.Server(baseurl, io_loop=ioloop)
+    s.create('testdb', callback=do_test)
+    ioloop.start()
+
+
+@with_ioloop
+@with_couchdb
+def test_bulk_conflict(baseurl, ioloop):
+    def do_test(db):
+        def bulks_cb(response):
+            db.bulk_docs([{
+                        '_id': 'foobar', 'key1': 'data2'
+                        }], bulks_update_cb)
+
+        def bulks_update_cb(response):
+            eq(response.error, False)
+            eq(len(response), 1)
+            assert all(isinstance(x, trombi.BulkError) for x in response)
+            eq(response[0].reason, 'Document update conflict.')
+            ioloop.stop()
+
+        datas = [
+            {'_id': 'foobar', 'key1': 'data1'},
+            ]
+        db.bulk_docs(datas, bulks_cb)
+
+    s = trombi.Server(baseurl, io_loop=ioloop)
+    s.create('testdb', callback=do_test)
+    ioloop.start()
+
+
+@with_ioloop
+@with_couchdb
+def test_bulk_insert_with_doc(baseurl, ioloop):
+    def do_test(db):
+        def doc_created_cb(response):
+            response['some'] = 'other'
+            db.bulk_docs([response], bulks_cb)
+
+        def bulks_cb(response):
+            assert not response.error
+            eq(len(response), 1)
+            assert all(isinstance(x, trombi.BulkObject) for x in response)
+            ioloop.stop()
+
+        db.set('mydoc', {'some': 'data'}, doc_created_cb)
+
+    s = trombi.Server(baseurl, io_loop=ioloop)
+    s.create('testdb', callback=do_test)
+    ioloop.start()
+
+
+@with_ioloop
+@with_couchdb
+def test_bulk_insert_mixed(baseurl, ioloop):
+    def do_test(db):
+        def doc_created_cb(response):
+            response['some'] = 'other'
+            db.bulk_docs([response, {'other': 'doc'}], bulks_cb)
+
+        def bulks_cb(response):
+            assert not response.error
+            eq(len(response), 2)
+            assert all(isinstance(x, trombi.BulkObject) for x in response)
+            ioloop.stop()
+
+        db.set('mydoc', {'some': 'data'}, doc_created_cb)
+
+    s = trombi.Server(baseurl, io_loop=ioloop)
+    s.create('testdb', callback=do_test)
+    ioloop.start()
+
 
 @with_ioloop
 @with_couchdb
@@ -962,6 +1104,412 @@ def test_delete_attachment_wrong_rev(baseurl, ioloop):
     s.create('testdb', callback=create_db_callback)
     ioloop.start()
 
+@with_ioloop
+@with_couchdb
+def test_copy_document(baseurl, ioloop):
+    def create_db_callback(db):
+        db.set(
+            {'testvalue': 'something'},
+            create_doc_callback,
+            )
+
+    def create_doc_callback(doc):
+        doc.copy('newname', copy_done)
+
+    def copy_done(doc):
+        eq(doc.id, 'newname')
+        eq(dict(doc), {'testvalue': 'something'})
+        ioloop.stop()
+
+    s = trombi.Server(baseurl, io_loop=ioloop)
+    s.create('testdb', callback=create_db_callback)
+    ioloop.start()
+
+
+@with_ioloop
+@with_couchdb
+def test_copy_document_exists(baseurl, ioloop):
+    def do_test(db):
+        def create_doc(doc):
+            db.set(
+                {'testvalue': 'something'},
+                copy_doc,
+                )
+
+        def copy_doc(doc):
+            doc.copy('newname', copy_done)
+
+        def copy_done(result):
+            eq(result.error, True)
+            eq(result.errno, trombi.errors.CONFLICT)
+            eq(result.msg, 'Document update conflict.')
+            ioloop.stop()
+
+        db.set('newname', {'something': 'else'}, create_doc)
+
+    s = trombi.Server(baseurl, io_loop=ioloop)
+    s.create('testdb', callback=do_test)
+    ioloop.start()
+
+
+@with_ioloop
+@with_couchdb
+def test_copy_document_with_attachments(baseurl, ioloop):
+    def create_db_callback(db):
+        db.set(
+            {'testvalue': 'something'},
+            create_doc_callback,
+            attachments={'foo': (None, b'bar')}
+            )
+
+    def create_doc_callback(doc):
+        doc.copy('newname', copy_done)
+
+    def copy_done(doc):
+        eq(doc.id, 'newname')
+        eq(dict(doc), {'testvalue': 'something'})
+        eq(list(doc.attachments.keys()), ['foo'])
+        eq(doc.attachments['foo']['content_type'], 'text/plain')
+        ioloop.stop()
+
+    s = trombi.Server(baseurl, io_loop=ioloop)
+    s.create('testdb', callback=create_db_callback)
+    ioloop.start()
+
+
+@with_ioloop
+@with_couchdb
+def test_copy_loaded_document_with_attachments_false(baseurl, ioloop):
+    def create_db_callback(db):
+        db.set(
+            {'testvalue': 'something'},
+            create_doc_callback,
+            attachments={'foo': (None, b'bar')}
+            )
+
+    def create_doc_callback(doc):
+        doc.db.get(doc.id, got_doc)
+
+    def got_doc(doc):
+        doc.copy('newname', copy_done)
+
+    def copy_done(doc):
+        eq(doc.id, 'newname')
+        eq(dict(doc), {'testvalue': 'something'})
+        doc.load_attachment('foo', loaded_attachment)
+
+    def loaded_attachment(attach):
+        eq(attach, b'bar')
+        ioloop.stop()
+
+    s = trombi.Server(baseurl, io_loop=ioloop)
+    s.create('testdb', callback=create_db_callback)
+    ioloop.start()
+
+
+@with_ioloop
+@with_couchdb
+def test_copy_loaded_document_with_attachments_true(baseurl, ioloop):
+    def create_db_callback(db):
+        db.set(
+            {'testvalue': 'something'},
+            create_doc_callback,
+            attachments={'foo': (None, b'bar')}
+            )
+
+    def create_doc_callback(doc):
+        doc.db.get(doc.id, got_doc, attachments=True)
+
+    def got_doc(doc):
+        doc.copy('newname', copy_done)
+
+    def copy_done(doc):
+        eq(doc.id, 'newname')
+        eq(dict(doc), {'testvalue': 'something'})
+        eq(list(doc.attachments.keys()), ['foo'])
+        eq(doc.attachments['foo']['content_type'], 'text/plain')
+        ioloop.stop()
+
+    s = trombi.Server(baseurl, io_loop=ioloop)
+    s.create('testdb', callback=create_db_callback)
+    ioloop.start()
+
+
+@with_ioloop
+@with_couchdb
+def test_create_document_raw(baseurl, ioloop):
+    def create_db_callback(db):
+        db.set(
+            {'testvalue': 'something'},
+            create_doc_callback,
+            )
+
+    def create_doc_callback(doc):
+        eq(doc.error, False)
+        assert isinstance(doc, trombi.Document)
+        assert doc.id
+        assert doc.rev
+
+        eq(doc.raw(),
+           {
+                '_id': doc.id,
+                '_rev': doc.rev,
+                'testvalue': 'something',
+                })
+        ioloop.stop()
+
+    s = trombi.Server(baseurl, io_loop=ioloop)
+    s.create('testdb', callback=create_db_callback)
+    ioloop.start()
+
+
+@with_ioloop
+@with_couchdb
+def test_view_results_with_offset(baseurl, ioloop):
+    def do_test(db):
+        def create_view_callback(response):
+            eq(response.code, 201)
+            db.set({'data': 'data'}, create_first_doc_cb)
+
+        def create_first_doc_cb(response):
+            db.set({'another': 'data'}, create_docs_cb)
+
+        def create_docs_cb(doc):
+            db.view('testview', 'all', load_view_cb, skip=1)
+
+        def load_view_cb(result):
+            eq(result.error, False)
+            eq(len(result), 1)
+            eq(result.total_rows, 2)
+            eq(result.offset, 1)
+            ioloop.stop()
+
+        db.server._fetch(
+            '%stestdb/_design/testview' % baseurl,
+            create_view_callback,
+            method='PUT',
+            body=json.dumps(
+                {
+                    'language': 'javascript',
+                    'views': {
+                        'all': {
+                            'map': '(function (doc) { emit(null, doc) })',
+                            }
+                        }
+                    }
+                )
+            )
+
+    s = trombi.Server(baseurl, io_loop=ioloop)
+    s.create('testdb', callback=do_test)
+    ioloop.start()
+
+
+@with_ioloop
+@with_couchdb
+def test_view_results_include_docs(baseurl, ioloop):
+    def do_test(db):
+        def create_view_callback(response):
+            eq(response.code, 201)
+            db.set({'data': 'data'}, create_first_doc_cb)
+
+        def create_first_doc_cb(response):
+            db.set({'another': 'data'}, create_docs_cb)
+
+        def create_docs_cb(doc):
+            db.view('testview', 'all', load_view_cb, include_docs=True)
+
+        def load_view_cb(result):
+            eq(result.error, False)
+            eq(len(result), 2)
+            eq(result.total_rows, 2)
+            assert all(isinstance(x['doc'], trombi.Document) for x in result)
+            ioloop.stop()
+
+        db.server._fetch(
+            '%stestdb/_design/testview' % baseurl,
+            create_view_callback,
+            method='PUT',
+            body=json.dumps(
+                {
+                    'language': 'javascript',
+                    'views': {
+                        'all': {
+                            'map': '(function (doc) { emit(null, doc) })',
+                            }
+                        }
+                    }
+                )
+            )
+
+    s = trombi.Server(baseurl, io_loop=ioloop)
+    s.create('testdb', callback=do_test)
+    ioloop.start()
+
+
+@with_ioloop
+@with_couchdb
+def test_view_results_include_docs_with_bogus_docs(baseurl, ioloop):
+    def do_test(db):
+        def create_view_callback(response):
+            eq(response.code, 201)
+            db.set({'data': 'data'}, create_first_doc_cb)
+
+        def create_first_doc_cb(response):
+            db.set({'another': 'data'}, create_docs_cb)
+
+        def create_docs_cb(doc):
+            db.view('testview', 'all', load_view_cb, include_docs=True)
+
+        def load_view_cb(result):
+            eq(result.error, False)
+            eq(len(result), 2)
+            eq(result.total_rows, 2)
+            assert all(x['doc'] == None for x in result)
+            ioloop.stop()
+
+        db.server._fetch(
+            '%stestdb/_design/testview' % baseurl,
+            create_view_callback,
+            method='PUT',
+            body=json.dumps(
+                {
+                    'language': 'javascript',
+                    'views': {
+                        'all': {
+                            'map': '(function (doc) { emit(null, \
+                            {"_id": "bogus"}) })',
+                            }
+                        }
+                    }
+                )
+            )
+
+    s = trombi.Server(baseurl, io_loop=ioloop)
+    s.create('testdb', callback=do_test)
+    ioloop.start()
+
+
+
+@with_ioloop
+@with_couchdb
+def test_continuous_changes_feed(baseurl, ioloop):
+    def do_test(db):
+        runs = []
+
+        def _got_change(change):
+            runs.append(True)
+            change['changes'][0].pop('rev')
+
+            if len(runs) == 1:
+                # First change
+                eq(change, {'seq': 1, 'id': 'mydoc', 'changes': [{}]})
+
+            elif len(runs) == 2:
+                # Second change
+                eq(change, {'seq': 2, 'id': 'second_doc', 'changes': [{}]})
+
+                # Create another document
+                db.set('third_doc', {'still': 'more'}, lambda x: None)
+
+            elif len(runs) == 3:
+                eq(change, {'seq': 3, 'id': 'third_doc', 'changes': [{}]})
+                ioloop.stop()
+
+        def doc_created(response):
+            assert not response.error
+            db.changes(_got_change, feed='continuous')
+
+            # Create another document
+            db.set('second_doc', {'more': 'data'}, lambda x: None)
+
+        db.set('mydoc', {'some': 'data'}, doc_created)
+
+    s = trombi.Server(baseurl, io_loop=ioloop)
+    s.create('testdb', callback=do_test)
+    ioloop.start()
+
+
+@with_ioloop
+@with_couchdb
+def test_long_polling_changes_feed(baseurl, ioloop):
+    changes = []
+
+    def do_test(db):
+        def _got_change(change):
+            changes.append(change.content)
+            ioloop.stop()
+
+        def doc_created(response):
+            assert not response.error
+            db.changes(_got_change, feed='longpoll')
+
+        db.set('mydoc', {'some': 'data'}, doc_created)
+
+    s = trombi.Server(baseurl, io_loop=ioloop)
+    s.create('testdb', callback=do_test)
+    ioloop.start()
+    changes[0]['results'][0]['changes'][0].pop('rev')
+    eq(changes[0], {'last_seq': 1, 'results': [{
+                    'changes': [{}], 'id': 'mydoc', 'seq': 1}]})
+
+
+@with_ioloop
+@with_couchdb
+def test_long_polling_before_doc_created(baseurl, ioloop):
+    changes = []
+
+    def do_test(db):
+        def _got_change(change):
+            changes.append(change.content)
+            ioloop.stop()
+
+        def doc_created(response):
+            assert not response.error
+
+        db.changes(_got_change, feed='longpoll', timeout=2)
+        db.set('mydoc', {'some': 'data'}, doc_created)
+
+    s = trombi.Server(baseurl, io_loop=ioloop)
+    s.create('testdb', callback=do_test)
+    ioloop.start()
+    changes[0]['results'][0]['changes'][0].pop('rev')
+    eq(changes[0], {'last_seq': 1, 'results': [{
+                    'changes': [{}], 'id': 'mydoc', 'seq': 1}]})
+
+
+def test_custom_encoder():
+    s = trombi.Server('http://localhost:5984', json_encoder=DatetimeEncoder)
+    json.dumps({'foo': datetime.now()}, cls=s._json_encoder)
+
+
+def test_custom_encoder_from_uri():
+    db = trombi.from_uri('http://localhost:5984/testdb/',
+                         json_encoder=DatetimeEncoder)
+    json.dumps({'foo': datetime.now()}, cls=db._json_encoder)
+
+
+@with_ioloop
+@with_couchdb
+def test_create_document_with_custom_encoder(baseurl, ioloop):
+    def create_db_callback(db):
+        db.set(
+            {'testvalue': datetime(1900, 1, 1)},
+            create_doc_callback,
+            )
+
+    def create_doc_callback(doc):
+        eq(doc.error, False)
+        assert isinstance(doc, trombi.Document)
+        assert doc.id
+        assert doc.rev
+
+        eq(doc['testvalue'], datetime(1900, 1, 1))
+        ioloop.stop()
+
+    s = trombi.Server(baseurl, io_loop=ioloop, json_encoder=DatetimeEncoder)
+    s.create('testdb', callback=create_db_callback)
+    ioloop.start()
 
 @with_ioloop
 @with_couchdb
@@ -1259,554 +1807,4 @@ def test_temporary_view_with_reduce_fun(baseurl, ioloop):
 
     s = trombi.Server(baseurl, io_loop=ioloop)
     s.create('testdb', callback=do_test)
-    ioloop.start()
-
-
-@with_ioloop
-@with_couchdb
-def test_copy_document(baseurl, ioloop):
-    def create_db_callback(db):
-        db.set(
-            {'testvalue': 'something'},
-            create_doc_callback,
-            )
-
-    def create_doc_callback(doc):
-        doc.copy('newname', copy_done)
-
-    def copy_done(doc):
-        eq(doc.id, 'newname')
-        eq(dict(doc), {'testvalue': 'something'})
-        ioloop.stop()
-
-    s = trombi.Server(baseurl, io_loop=ioloop)
-    s.create('testdb', callback=create_db_callback)
-    ioloop.start()
-
-
-@with_ioloop
-@with_couchdb
-def test_copy_document_exists(baseurl, ioloop):
-    def do_test(db):
-        def create_doc(doc):
-            db.set(
-                {'testvalue': 'something'},
-                copy_doc,
-                )
-
-        def copy_doc(doc):
-            doc.copy('newname', copy_done)
-
-        def copy_done(result):
-            eq(result.error, True)
-            eq(result.errno, trombi.errors.CONFLICT)
-            eq(result.msg, 'Document update conflict.')
-            ioloop.stop()
-
-        db.set('newname', {'something': 'else'}, create_doc)
-
-    s = trombi.Server(baseurl, io_loop=ioloop)
-    s.create('testdb', callback=do_test)
-    ioloop.start()
-
-
-@with_ioloop
-@with_couchdb
-def test_copy_document_with_attachments(baseurl, ioloop):
-    def create_db_callback(db):
-        db.set(
-            {'testvalue': 'something'},
-            create_doc_callback,
-            attachments={'foo': (None, b'bar')}
-            )
-
-    def create_doc_callback(doc):
-        doc.copy('newname', copy_done)
-
-    def copy_done(doc):
-        eq(doc.id, 'newname')
-        eq(dict(doc), {'testvalue': 'something'})
-        eq(list(doc.attachments.keys()), ['foo'])
-        eq(doc.attachments['foo']['content_type'], 'text/plain')
-        ioloop.stop()
-
-    s = trombi.Server(baseurl, io_loop=ioloop)
-    s.create('testdb', callback=create_db_callback)
-    ioloop.start()
-
-
-@with_ioloop
-@with_couchdb
-def test_copy_loaded_document_with_attachments_false(baseurl, ioloop):
-    def create_db_callback(db):
-        db.set(
-            {'testvalue': 'something'},
-            create_doc_callback,
-            attachments={'foo': (None, b'bar')}
-            )
-
-    def create_doc_callback(doc):
-        doc.db.get(doc.id, got_doc)
-
-    def got_doc(doc):
-        doc.copy('newname', copy_done)
-
-    def copy_done(doc):
-        eq(doc.id, 'newname')
-        eq(dict(doc), {'testvalue': 'something'})
-        doc.load_attachment('foo', loaded_attachment)
-
-    def loaded_attachment(attach):
-        eq(attach, b'bar')
-        ioloop.stop()
-
-    s = trombi.Server(baseurl, io_loop=ioloop)
-    s.create('testdb', callback=create_db_callback)
-    ioloop.start()
-
-
-@with_ioloop
-@with_couchdb
-def test_copy_loaded_document_with_attachments_true(baseurl, ioloop):
-    def create_db_callback(db):
-        db.set(
-            {'testvalue': 'something'},
-            create_doc_callback,
-            attachments={'foo': (None, b'bar')}
-            )
-
-    def create_doc_callback(doc):
-        doc.db.get(doc.id, got_doc, attachments=True)
-
-    def got_doc(doc):
-        doc.copy('newname', copy_done)
-
-    def copy_done(doc):
-        eq(doc.id, 'newname')
-        eq(dict(doc), {'testvalue': 'something'})
-        eq(list(doc.attachments.keys()), ['foo'])
-        eq(doc.attachments['foo']['content_type'], 'text/plain')
-        ioloop.stop()
-
-    s = trombi.Server(baseurl, io_loop=ioloop)
-    s.create('testdb', callback=create_db_callback)
-    ioloop.start()
-
-
-@with_ioloop
-@with_couchdb
-def test_create_document_raw(baseurl, ioloop):
-    def create_db_callback(db):
-        db.set(
-            {'testvalue': 'something'},
-            create_doc_callback,
-            )
-
-    def create_doc_callback(doc):
-        eq(doc.error, False)
-        assert isinstance(doc, trombi.Document)
-        assert doc.id
-        assert doc.rev
-
-        eq(doc.raw(),
-           {
-                '_id': doc.id,
-                '_rev': doc.rev,
-                'testvalue': 'something',
-                })
-        ioloop.stop()
-
-    s = trombi.Server(baseurl, io_loop=ioloop)
-    s.create('testdb', callback=create_db_callback)
-    ioloop.start()
-
-
-@with_ioloop
-@with_couchdb
-def test_view_results_with_offset(baseurl, ioloop):
-    def do_test(db):
-        def create_view_callback(response):
-            eq(response.code, 201)
-            db.set({'data': 'data'}, create_first_doc_cb)
-
-        def create_first_doc_cb(response):
-            db.set({'another': 'data'}, create_docs_cb)
-
-        def create_docs_cb(doc):
-            db.view('testview', 'all', load_view_cb, skip=1)
-
-        def load_view_cb(result):
-            eq(result.error, False)
-            eq(len(result), 1)
-            eq(result.total_rows, 2)
-            eq(result.offset, 1)
-            ioloop.stop()
-
-        db.server._fetch(
-            '%stestdb/_design/testview' % baseurl,
-            create_view_callback,
-            method='PUT',
-            body=json.dumps(
-                {
-                    'language': 'javascript',
-                    'views': {
-                        'all': {
-                            'map': '(function (doc) { emit(null, doc) })',
-                            }
-                        }
-                    }
-                )
-            )
-
-    s = trombi.Server(baseurl, io_loop=ioloop)
-    s.create('testdb', callback=do_test)
-    ioloop.start()
-
-
-@with_ioloop
-@with_couchdb
-def test_view_results_include_docs(baseurl, ioloop):
-    def do_test(db):
-        def create_view_callback(response):
-            eq(response.code, 201)
-            db.set({'data': 'data'}, create_first_doc_cb)
-
-        def create_first_doc_cb(response):
-            db.set({'another': 'data'}, create_docs_cb)
-
-        def create_docs_cb(doc):
-            db.view('testview', 'all', load_view_cb, include_docs=True)
-
-        def load_view_cb(result):
-            eq(result.error, False)
-            eq(len(result), 2)
-            eq(result.total_rows, 2)
-            assert all(isinstance(x['doc'], trombi.Document) for x in result)
-            ioloop.stop()
-
-        db.server._fetch(
-            '%stestdb/_design/testview' % baseurl,
-            create_view_callback,
-            method='PUT',
-            body=json.dumps(
-                {
-                    'language': 'javascript',
-                    'views': {
-                        'all': {
-                            'map': '(function (doc) { emit(null, doc) })',
-                            }
-                        }
-                    }
-                )
-            )
-
-    s = trombi.Server(baseurl, io_loop=ioloop)
-    s.create('testdb', callback=do_test)
-    ioloop.start()
-
-
-@with_ioloop
-@with_couchdb
-def test_view_results_include_docs_with_bogus_docs(baseurl, ioloop):
-    def do_test(db):
-        def create_view_callback(response):
-            eq(response.code, 201)
-            db.set({'data': 'data'}, create_first_doc_cb)
-
-        def create_first_doc_cb(response):
-            db.set({'another': 'data'}, create_docs_cb)
-
-        def create_docs_cb(doc):
-            db.view('testview', 'all', load_view_cb, include_docs=True)
-
-        def load_view_cb(result):
-            eq(result.error, False)
-            eq(len(result), 2)
-            eq(result.total_rows, 2)
-            assert all(x['doc'] == None for x in result)
-            ioloop.stop()
-
-        db.server._fetch(
-            '%stestdb/_design/testview' % baseurl,
-            create_view_callback,
-            method='PUT',
-            body=json.dumps(
-                {
-                    'language': 'javascript',
-                    'views': {
-                        'all': {
-                            'map': '(function (doc) { emit(null, \
-                            {"_id": "bogus"}) })',
-                            }
-                        }
-                    }
-                )
-            )
-
-    s = trombi.Server(baseurl, io_loop=ioloop)
-    s.create('testdb', callback=do_test)
-    ioloop.start()
-
-
-@with_ioloop
-@with_couchdb
-def test_bulk_insert(baseurl, ioloop):
-    def do_test(db):
-        datas = [
-            {'key1': 'data1'},
-            {'key2': 'data2'},
-            ]
-        db.bulk_docs(datas, bulks_cb)
-
-    def bulks_cb(response):
-        assert not response.error
-        eq(len(response), 2)
-        assert all(isinstance(x, trombi.BulkObject) for x in response)
-        ioloop.stop()
-
-    s = trombi.Server(baseurl, io_loop=ioloop)
-    s.create('testdb', callback=do_test)
-    ioloop.start()
-
-
-@with_ioloop
-@with_couchdb
-def test_bulk_delete(baseurl, ioloop):
-    def do_test(db):
-        def bulks_cb(response):
-            datas = []
-            for doc in response:
-                datas.append(dict(doc))
-                datas[-1]['_deleted'] = True
-            db.bulk_docs(datas, bulks_delete_cb)
-
-        def bulks_delete_cb(response):
-            eq(response.error, False)
-            eq(len(response), 2)
-            assert all(isinstance(x, trombi.BulkObject) for x in response)
-            ioloop.stop()
-
-        datas = [
-            {'key1': 'data1'},
-            {'key2': 'data2'},
-            ]
-        db.bulk_docs(datas, bulks_cb)
-
-    s = trombi.Server(baseurl, io_loop=ioloop)
-    s.create('testdb', callback=do_test)
-    ioloop.start()
-
-
-@with_ioloop
-@with_couchdb
-def test_bulk_mixed(baseurl, ioloop):
-    def do_test(db):
-        def bulks_cb(response):
-            datas = [dict(response[0])]
-            datas[0]['_deleted'] = True
-            db.bulk_docs(datas, bulks_delete_cb)
-
-        def bulks_delete_cb(response):
-            eq(response.error, False)
-            eq(len(response), 1)
-            assert all(isinstance(x, trombi.BulkObject) for x in response)
-            ioloop.stop()
-
-        datas = [
-            {'key1': 'data1'},
-            {'key2': 'data2'},
-            ]
-        db.bulk_docs(datas, bulks_cb)
-
-    s = trombi.Server(baseurl, io_loop=ioloop)
-    s.create('testdb', callback=do_test)
-    ioloop.start()
-
-
-@with_ioloop
-@with_couchdb
-def test_bulk_conflict(baseurl, ioloop):
-    def do_test(db):
-        def bulks_cb(response):
-            db.bulk_docs([{
-                        '_id': 'foobar', 'key1': 'data2'
-                        }], bulks_update_cb)
-
-        def bulks_update_cb(response):
-            eq(response.error, False)
-            eq(len(response), 1)
-            assert all(isinstance(x, trombi.BulkError) for x in response)
-            eq(response[0].reason, 'Document update conflict.')
-            ioloop.stop()
-
-        datas = [
-            {'_id': 'foobar', 'key1': 'data1'},
-            ]
-        db.bulk_docs(datas, bulks_cb)
-
-    s = trombi.Server(baseurl, io_loop=ioloop)
-    s.create('testdb', callback=do_test)
-    ioloop.start()
-
-
-@with_ioloop
-@with_couchdb
-def test_bulk_insert_with_doc(baseurl, ioloop):
-    def do_test(db):
-        def doc_created_cb(response):
-            response['some'] = 'other'
-            db.bulk_docs([response], bulks_cb)
-
-        def bulks_cb(response):
-            assert not response.error
-            eq(len(response), 1)
-            assert all(isinstance(x, trombi.BulkObject) for x in response)
-            ioloop.stop()
-
-        db.set('mydoc', {'some': 'data'}, doc_created_cb)
-
-    s = trombi.Server(baseurl, io_loop=ioloop)
-    s.create('testdb', callback=do_test)
-    ioloop.start()
-
-
-@with_ioloop
-@with_couchdb
-def test_bulk_insert_mixed(baseurl, ioloop):
-    def do_test(db):
-        def doc_created_cb(response):
-            response['some'] = 'other'
-            db.bulk_docs([response, {'other': 'doc'}], bulks_cb)
-
-        def bulks_cb(response):
-            assert not response.error
-            eq(len(response), 2)
-            assert all(isinstance(x, trombi.BulkObject) for x in response)
-            ioloop.stop()
-
-        db.set('mydoc', {'some': 'data'}, doc_created_cb)
-
-    s = trombi.Server(baseurl, io_loop=ioloop)
-    s.create('testdb', callback=do_test)
-    ioloop.start()
-
-
-@with_ioloop
-@with_couchdb
-def test_continuous_changes_feed(baseurl, ioloop):
-    def do_test(db):
-        runs = []
-
-        def _got_change(change):
-            runs.append(True)
-            change['changes'][0].pop('rev')
-
-            if len(runs) == 1:
-                # First change
-                eq(change, {'seq': 1, 'id': 'mydoc', 'changes': [{}]})
-
-            elif len(runs) == 2:
-                # Second change
-                eq(change, {'seq': 2, 'id': 'second_doc', 'changes': [{}]})
-
-                # Create another document
-                db.set('third_doc', {'still': 'more'}, lambda x: None)
-
-            elif len(runs) == 3:
-                eq(change, {'seq': 3, 'id': 'third_doc', 'changes': [{}]})
-                ioloop.stop()
-
-        def doc_created(response):
-            assert not response.error
-            db.changes(_got_change, feed='continuous')
-
-            # Create another document
-            db.set('second_doc', {'more': 'data'}, lambda x: None)
-
-        db.set('mydoc', {'some': 'data'}, doc_created)
-
-    s = trombi.Server(baseurl, io_loop=ioloop)
-    s.create('testdb', callback=do_test)
-    ioloop.start()
-
-
-@with_ioloop
-@with_couchdb
-def test_long_polling_changes_feed(baseurl, ioloop):
-    changes = []
-
-    def do_test(db):
-        def _got_change(change):
-            changes.append(change.content)
-            ioloop.stop()
-
-        def doc_created(response):
-            assert not response.error
-            db.changes(_got_change, feed='longpoll')
-
-        db.set('mydoc', {'some': 'data'}, doc_created)
-
-    s = trombi.Server(baseurl, io_loop=ioloop)
-    s.create('testdb', callback=do_test)
-    ioloop.start()
-    changes[0]['results'][0]['changes'][0].pop('rev')
-    eq(changes[0], {'last_seq': 1, 'results': [{
-                    'changes': [{}], 'id': 'mydoc', 'seq': 1}]})
-
-
-@with_ioloop
-@with_couchdb
-def test_long_polling_before_doc_created(baseurl, ioloop):
-    changes = []
-
-    def do_test(db):
-        def _got_change(change):
-            changes.append(change.content)
-            ioloop.stop()
-
-        def doc_created(response):
-            assert not response.error
-
-        db.changes(_got_change, feed='longpoll', timeout=2)
-        db.set('mydoc', {'some': 'data'}, doc_created)
-
-    s = trombi.Server(baseurl, io_loop=ioloop)
-    s.create('testdb', callback=do_test)
-    ioloop.start()
-    changes[0]['results'][0]['changes'][0].pop('rev')
-    eq(changes[0], {'last_seq': 1, 'results': [{
-                    'changes': [{}], 'id': 'mydoc', 'seq': 1}]})
-
-
-def test_custom_encoder():
-    s = trombi.Server('http://localhost:5984', json_encoder=DatetimeEncoder)
-    json.dumps({'foo': datetime.now()}, cls=s._json_encoder)
-
-
-def test_custom_encoder_from_uri():
-    db = trombi.from_uri('http://localhost:5984/testdb/',
-                         json_encoder=DatetimeEncoder)
-    json.dumps({'foo': datetime.now()}, cls=db._json_encoder)
-
-
-@with_ioloop
-@with_couchdb
-def test_create_document_with_custom_encoder(baseurl, ioloop):
-    def create_db_callback(db):
-        db.set(
-            {'testvalue': datetime(1900, 1, 1)},
-            create_doc_callback,
-            )
-
-    def create_doc_callback(doc):
-        eq(doc.error, False)
-        assert isinstance(doc, trombi.Document)
-        assert doc.id
-        assert doc.rev
-
-        eq(doc['testvalue'], datetime(1900, 1, 1))
-        ioloop.stop()
-
-    s = trombi.Server(baseurl, io_loop=ioloop, json_encoder=DatetimeEncoder)
-    s.create('testdb', callback=create_db_callback)
     ioloop.start()

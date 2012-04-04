@@ -200,7 +200,7 @@ class CreateSimpleDocumentDatabase(
             response = self.wait()
             return response
 
-        def should_provide_an_erro(self, topic):
+        def should_provide_an_error(self, topic):
             expect(topic.error).to_be_true()
 
         def should_have_error_code(self, topic):
@@ -220,7 +220,7 @@ class CreateSimpleDocumentDatabase(
             response = self.wait()
             return response
 
-        def should_provide_an_erro(self, topic):
+        def should_provide_an_error(self, topic):
             expect(topic.error).to_be_true()
 
         def should_have_error_code(self, topic):
@@ -240,7 +240,7 @@ class CreateSimpleDocumentDatabase(
             response = self.wait()
             return response
 
-        def should_provide_an_erro(self, topic):
+        def should_provide_an_error(self, topic):
             expect(topic.error).to_be_true()
 
         def should_have_error_code(self, topic):

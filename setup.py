@@ -15,6 +15,7 @@ setup(
     packages=['trombi'],
     install_requires = [
         'tornado>=2.2',
+        'couchapp>=1.0.1',
         ],
     tests_require = tests_requirements,
     extras_require = {'test': tests_requirements},

@@ -141,3 +141,67 @@ class CreateDocumentDatabase(TornadoHTTPContext):
 
         def should_provide_an_error(self, topic):
             expect(topic.error).to_be_true()
+
+    class CopyDocument(TornadoHTTPContext):
+
+        def topic(self, database):
+            database.set('original', {'key': 'value'}, callback=self.stop)
+            document = self.wait()
+            document.copy('copy', self.stop)
+            copied_document = self.wait()
+            return (document, copied_document)
+
+        def should_have_the_same_content(self, topic):
+            original, copy = topic
+            expect(copy).to_equal(original)
+
+        def should_have_different_ids(self, topic):
+            original, copy = topic
+            expect(original.id).Not.to_equal(copy.id)
+
+    class CopyDocumentAlreadyExists(TornadoHTTPContext):
+
+        def topic(self, database):
+            database.set('an_original', {'key': 'value'}, callback=self.stop)
+            document = self.wait()
+            document.copy('an_original', self.stop)
+            copied_document = self.wait()
+            return copied_document
+
+        def should_provide_an_error(self, topic):
+            expect(topic.error).to_be_true()
+
+        def should_have_error_code(self, topic):
+            expect(topic.errno).to_equal(trombi.errors.CONFLICT)
+
+        def should_have_error_message(self, topic):
+            expect(topic.msg).to_equal('Document update conflict.')
+
+    class CopyDocumentWithAttachment(TornadoHTTPContext):
+
+        def topic(self, database):
+            database.set('original-inline', {'key': 'value'}, 
+                    attachments={'foobar': (None, b'some textual data')},
+                    callback=self.stop)
+            document = self.wait()
+            document.copy('copy-inline', callback=self.stop)
+            copy_response = self.wait()
+            return copy_response
+
+        def should_have_attachment(self, topic):
+            expect(topic.attachments).Not.to_be_empty()
+
+        def should_have_content_type(self, topic):
+            expect(topic.attachments['foobar']['content_type']).to_equal(
+                    'text/plain')
+
+        class RawDocument(TornadoHTTPContext):
+            
+            def topic(self, document, _):
+                return document.raw()
+
+            def should_have_id(self, topic):
+                expect(topic).to_include('_id')
+
+            def should_have_revision(self, topic):
+                expect(topic).to_include('_rev')
